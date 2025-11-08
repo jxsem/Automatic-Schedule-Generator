@@ -1,148 +1,147 @@
 function generarHorario() {
-  const hojaEmpleados = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Empleados");
-  const hojaHorario = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Horario");
+  // Obtiene la hoja activa y selecciona la hoja llamada “Empleados”
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const hoja = ss.getSheetByName("Empleados");
 
-  if (!hojaEmpleados || !hojaHorario) {
-    SpreadsheetApp.getUi().alert("Las hojas 'Empleados' o 'Horario' no existen. Revisa los nombres.");
-    return;
-  }
+  // Toma los nombres desde la columna A (empezando en A2 hacia abajo)
+  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 1).getValues().flat();
 
-  const todosEmpleados = hojaEmpleados.getRange(2, 1, hojaEmpleados.getLastRow() - 1).getValues().flat();
-  const empleados = todosEmpleados;
+  // Días de la semana que se van a usar como columnas
+  const dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
-  if (empleados.length < 6) {
-    SpreadsheetApp.getUi().alert("Debe haber al menos 6 empleados disponibles para asignar.");
-    return;
-  }
+  // Definición de los tres tipos de turnos
+  const mañana = "10:00-14:00";
+  const tarde = "16:30-20:30";
+  const doble = `${mañana} / ${tarde}`; // turno doble (mañana + tarde)
 
-  const dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"]; // Domingo excluido
-
-  const maxHoras = {
-    "Adrián Martos": 40,
-    "María Ruiz": 24,
-    "Jose Peinado": 40,
-    "Javier Lopez": 32,
-    "Hilario Pastrana": 32,
-    "Fran Catena": 32,
-    "Fran Cervilla": 32,
-    "Jose Manuel": 32,
-    "Antonio Ferron": 32,
-    "Cinthya Suazo": 28
+  // Objetos personalizados por empleado -> clave - valor
+  // - max: horas semanales máximas
+  // - descanso: días libres
+  // - solo: “mañana” o “tarde” si solo trabaja en ese turno
+  // - doblesMin / doblesMax: mínimo o máximo de días con turno doble
+  const reglas = {
+    "Adrián Martos": { max: 40, descanso: ["Jueves"], doblesMax: 5, doblesMin: 5},
+    "María Ruiz": { max: 20, descanso: ["Jueves"], solo: "mañana" },
+    "Jose Peinado": { max: 40, descanso: ["Miércoles"], doblesMax: 5, doblesMin: 5 },
+    "Javier Lopez": { max: 32, doblesMax: 2 },
+    "Hilario Pastrana": { max: 32, solo: "tarde", doblesMin: 2 },
+    "Fran Catena": { max: 32, solo: "mañana", doblesMin: 2 },
+    "Fran Cervilla": { max: 32, doblesMax: 3, doblesMin: 3 },
+    "Jose Manuel": { max: 32, doblesMax: 2, doblesMin: 2 },
+    "Antonio Ferron": { max: 32, doblesMax: 2, doblesMin: 2 },
+    "Cinthya Suazo": { max: 28, doblesMax: 1, doblesMin: 2 },
+    "Sol Morales": { max: 24, doblesMax: 1, doblesMin: 1 }
   };
 
-  const descansos = {
-    "Adrián Martos": [3],
-    "María Ruiz": [3],
-    "Jose Peinado": [2]
-  };
+  // Limpia las columnas B–H (Lunes–Sábado + Horas) antes de generar el nuevo horario
+  hoja.getRange(2, 2, hoja.getLastRow() - 1, dias.length + 1).clearContent();
 
-  const asignacionTurnos = {};
-  empleados.forEach(e => {
-    if (["Fran Catena", "Cinthya Suazo", "María Ruiz"].includes(e)) asignacionTurnos[e] = "mañana";
-    else if (e === "Hilario Pastrana") asignacionTurnos[e] = "tarde";
-    else asignacionTurnos[e] = null;
-  });
+  // Recorre cada empleado
+  datos.forEach((nombre, i) => {
+    const regla = reglas[nombre] || { max: 32 }; // si no tiene regla, usa 32h por defecto
+    let horas = 0;
+    const fila = [];
 
-  if (!empleados.includes("Fran Cervilla")) {
-    SpreadsheetApp.getUi().alert("Falta Fran Cervilla en la lista de empleados.");
-    return;
-  }
-  asignacionTurnos["Fran Cervilla"] = Math.random() < 0.5 ? "mañana" : "tarde";
-  const diaDescansoFranC = Math.floor(Math.random() * dias.length);
-  descansos["Fran Cervilla"] = [diaDescansoFranC];
+    // Crea una copia de los días pero barajada aleatoriamente
+    const diasMezclados = dias.slice().sort(() => Math.random() - 0.5);
 
-  const otrosEmpleados = empleados.filter(e => asignacionTurnos[e] === null);
-  for (let i = 0; i < otrosEmpleados.length; i++) {
-    asignacionTurnos[otrosEmpleados[i]] = i % 2 === 0 ? "mañana" : "tarde";
+    // Objeto si algún empleado NO tiene dia de descanso asignado
+    const asignacion = {};
+    // --- ASIGNAR DESCANSO AUTOMÁTICO A FRAN CERVILLA ---
+    if (nombre === "Fran Cervilla" && !regla.descanso) {
+    const diaAleatorio = dias[Math.floor(Math.random() * dias.length)];
+    regla.descanso = [diaAleatorio];
   }
 
-  function asignarDiasDoble(cantidad, empleado) {
-    if (empleado === "María Ruiz") return [];
-    let diasDisponibles = Array.from({ length: dias.length }, (_, i) => i);
-    if (descansos[empleado]) diasDisponibles = diasDisponibles.filter(d => !descansos[empleado].includes(d));
-    if (["Cinthya Suazo"].includes(empleado)) diasDisponibles = diasDisponibles.filter(d => asignacionTurnos[empleado] === "mañana");
-
-    const seleccionados = [];
-    for (let i = 0; i < cantidad; i++) {
-      if (diasDisponibles.length === 0) break;
-      const idx = Math.floor(Math.random() * diasDisponibles.length);
-      seleccionados.push(diasDisponibles[idx]);
-      diasDisponibles.splice(idx, 1);
-    }
-    return seleccionados;
-  }
-
-  const dobleAsignacion = {};
-  empleados.forEach(e => {
-    switch(e) {
-      case "Fran Catena": dobleAsignacion[e] = asignarDiasDoble(2, e); break;
-      case "Hilario Pastrana": dobleAsignacion[e] = asignarDiasDoble(2, e); break;
-      case "Cinthya Suazo": dobleAsignacion[e] = asignarDiasDoble(1, e); break;
-      case "María Ruiz": dobleAsignacion[e] = []; break;
-      case "Adrián Martos": dobleAsignacion[e] = asignarDiasDoble(5, e); break;
-      case "Jose Peinado": dobleAsignacion[e] = [0,1,3,4,5]; break;
-      case "Fran Cervilla": dobleAsignacion[e] = asignarDiasDoble(3, e); break;
-      default: dobleAsignacion[e] = asignarDiasDoble(2, e);
-    }
-  });
-
-  const asignacionRoles = {};
-  const mezclaRoles = [...empleados].sort(() => Math.random() - 0.5);
-  const mitadRoles = Math.floor(empleados.length / 2);
-  empleados.forEach(e => {
-    if (e === "Cinthya Suazo") asignacionRoles[e] = "Ventas";
-    else if (e === "María Ruiz") asignacionRoles[e] = "";
-    else asignacionRoles[e] = mezclaRoles.indexOf(e) < mitadRoles ? "Compras" : "Ventas";
-  });
-
-  // Horas fijas de María: lunes 5h, martes 4h, miércoles 5h, jueves 0h, viernes 5h, sábado 5h
-  const horasMaria = [5, 4, 5, 0, 5, 5];
-
-  const horasTrabajadas = {};
-  empleados.forEach(e => horasTrabajadas[e] = 0);
-
-  for (let i = 0; i < dias.length; i++) {
-    const mananaEmpleados = empleados.filter(e => asignacionTurnos[e] === "mañana" && e !== "María Ruiz");
-    const tardeEmpleados = empleados.filter(e => asignacionTurnos[e] === "tarde");
-
-    empleados.forEach(e => {
-      if (descansos[e] && descansos[e].includes(i)) {
-        const idxM = mananaEmpleados.indexOf(e);
-        if(idxM > -1) mananaEmpleados.splice(idxM, 1);
-        const idxT = tardeEmpleados.indexOf(e);
-        if(idxT > -1) tardeEmpleados.splice(idxT, 1);
-      }
-    });
-
-    empleados.forEach((e, idxE) => {
-      let textoTurno = "";
-
-      if (e === "María Ruiz" && !descansos[e].includes(i)) {
-        textoTurno = i === 1 ? "9:00 - 13:00" : "9:00 - 14:00";
-      } else if (dobleAsignacion[e].includes(i)) {
-        textoTurno = "10:00 - 14:00\n16:30 - 20:30";
-      } else if (mananaEmpleados.includes(e)) {
-        textoTurno = "10:00 - 14:00";
-      } else if (tardeEmpleados.includes(e)) {
-        textoTurno = "16:30 - 20:30";
+    // --- PRIMERA PASADA: asignación base ---
+    diasMezclados.forEach(dia => {
+      // Si el día está en su descanso, marca “-” y pasa al siguiente
+      if (regla.descanso?.includes(dia)) {
+        asignacion[dia] = "DESCANSO";
+        return;
       }
 
-      hojaEmpleados.getRange(idxE+2, i+2).setValue(textoTurno);
-      hojaEmpleados.getRange(idxE+2, i+2).setWrap(true);
+      // Cuenta los días que ya tienen turno doble
+      const doblesActuales = Object.values(asignacion).filter(x => x.includes("/")).length;
+      const puedeDoblar = !regla.doblesMax || doblesActuales < regla.doblesMax;
+      // Si dobla un dia necesita un descanso entonces almacenamos el descanso en una variable
+      let turno = "DESCANSO";
+
+      // Si tiene restricción de “solo mañana” o “solo tarde”
+      if (regla.solo === "mañana") {
+        turno = mañana;
+        horas += 4;
+      } else if (regla.solo === "tarde") {
+        turno = tarde;
+        horas += 4;
+      } else {
+
+        // Asignación aleatoria de turno (doble, mañana o tarde)
+        const rand = Math.random(); // Genera un número aleatorio entre 0 y 1 (por ejemplo: 0.12, 0.57, 0.91...).
+        if (rand < 0.25 && horas + 8 <= regla.max && puedeDoblar) { 
+          turno = doble;
+          horas += 8;
+        } else if (rand < 0.6 && horas + 4 <= regla.max) {
+          turno = mañana;
+          horas += 4;
+        } else if (horas + 4 <= regla.max) {
+          turno = tarde;
+          horas += 4;
+        }
+      }
+      //Ese reparto de probabilidades (25 % dobles / 35 % mañanas / 40 % tardes) no es casualidad —> se suele ajustar según cómo esté configurado el resto del personal.
+      // Ya que hay como 4 personas con turno fijo de mañanas y habría muchas personas ya de mañanas y pocas de tardes.
+
+      asignacion[dia] = turno;
     });
 
-    // Acumular horas
-    empleados.forEach(e => {
-      let horasDia = 0;
-      if (e === "María Ruiz") horasDia = horasMaria[i]; // solo su arreglo fijo
-      else if (dobleAsignacion[e].includes(i)) horasDia = Math.min(8, maxHoras[e] - horasTrabajadas[e]);
-      else if (mananaEmpleados.includes(e) || tardeEmpleados.includes(e)) horasDia = Math.min(4, maxHoras[e] - horasTrabajadas[e]);
+    //Resultado al final de esta fase:
+    //El empleado ya tiene un horario tentativo, pero puede no cumplir aún los mínimos o máximos de dobles.
 
-      horasTrabajadas[e] += horasDia;
-    });
-  }
+    // --- SEGUNDA PASADA: forzar mínimos de dobles ---
+    if (regla.doblesMin) { // Aquí el script revisa cuántos turnos dobles tiene el empleado y los ajusta hacia arriba si no llega al mínimo.
+      let dobles = Object.values(asignacion).filter(x => x.includes("/")).length;// Busca cuantos "/" hay y los guarda en una variable llamada dobles
+      const diasDisponibles = diasMezclados.filter(
+        d => !asignacion[d].includes("/") && asignacion[d] !== "DESCANSO" // Crea una lista de días disponibles donde no hay turno doble ni descanso. O sea, busca huecos donde podría meter un turno doble.
+      );
+      while (dobles < regla.doblesMin && diasDisponibles.length) { // Aquí empieza a forzar dobles hasta alcanzar el mínimo obligatorio (doblesMin)
+        const dia = diasDisponibles.pop();
+        asignacion[dia] = doble; // cambia ese turno normal por un turno doble.
+        horas += 4;
+        dobles++;
+      }
+    }
+    // En resumen -> Este bloque corrige el azar de la primera pasada
 
-  empleados.forEach((e, idx) => hojaEmpleados.getRange(idx+2,9).setValue(horasTrabajadas[e]));
+    // --- TERCERA PASADA: reducir dobles si pasa del máximo ---> Lo mismo de arriba pero al revés
+    if (regla.doblesMax) {
+      let dobles = Object.entries(asignacion)
+        .filter(([_, v]) => v.includes("/"))
+        .map(([d]) => d); // Basicamente realiza una funcion donde cuenta cuantos "/" hay y si hay mas de los que la variable dobleMax permite se realizara un random de un 50% diciendo si el turno que sobra estará de mañanas o tarde
+      while (dobles.length > regla.doblesMax) {
+        const dia = dobles.pop();
+        // cambia el turno doble por mañana o tarde
+        asignacion[dia] = Math.random() < 0.5 ? mañana : tarde;
+        horas -= 4;
+      }
+    }
 
-  SpreadsheetApp.getUi().alert("¡Horario generado y horas calculadas con éxito!");
+    // Aquí el código revisa si el empleado tiene más turnos dobles de lo permitido (doblesMax).
+    // Si tiene más, va quitando dobles y los convierte en mañana/tarde normales hasta cumplir el límite.
+
+    // Reordena los días a su orden normal (Lunes–Sábado)
+    dias.forEach(dia => fila.push(asignacion[dia] || "—"));
+
+    // Añade las horas totales al final
+    fila.push(horas);
+
+    // Escribe la fila en la hoja (a partir de la columna B)
+    hoja.getRange(i + 2, 2, 1, fila.length).setValues([fila]); // filaInicial, columnaInicial, numFilas, numColumnas
+  });
+
+  // Ajusta automáticamente el ancho de columnas para que se vea bien
+  hoja.autoResizeColumns(1, dias.length + 2);
 }
+
+
+// SCRIPT REALIZADO POR JOSE MANUEL SOLDADO J. 
