@@ -21,8 +21,8 @@ Funcionalidades clave:
    - Exclusión de empleados en días de descanso.
 
 2. Horarios personalizados
-   - María Ruiz tiene horarios fijos de lunes a sábado, con ajuste para sumar exactamente 24h.
-   - Ajustes de salida y entrada personalizadas (ej. martes 9:00–13:00).
+   - María Ruiz, Fran Catena, Hilario Pastrana tiene horarios fijos de lunes a sábado, con ajuste para sumar exactamente sus horas.
+   - Ajustes de salida y entrada personalizadas 
 
 3. Cálculo de horas trabajadas
    - Se calcula la suma total de horas por empleado.
@@ -44,7 +44,6 @@ Estructura del código:
   - descansos → Días de descanso fijos.
   - asignacionTurnos → Turnos fijos de mañana/tarde.
   - dobleAsignacion → Días con turnos dobles.
-  - horasMaria → Ajuste especial para horas exactas de María Ruiz.
 
 Ejemplo de uso:
 1. Crear una hoja de Google Sheets con pestañas: Empleados y Horario.
