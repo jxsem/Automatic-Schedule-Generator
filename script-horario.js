@@ -30,7 +30,7 @@ function generarHorario() {
     "Jose Manuel": { max: 32, doblesMax: 2, doblesMin: 2 },
     "Antonio Ferron": { max: 32, doblesMax: 2, doblesMin: 2 },
     "Cinthya Suazo": { max: 28, doblesMax: 1, doblesMin: 2 },
-    "Sol Morales": { max: 24, doblesMax: 1, doblesMin: 1 }
+    "Sol Morales": { max: 32, doblesMax: 2, doblesMin: 2 }
   };
 
   // Limpia las columnas B–H (Lunes–Sábado + Horas) antes de generar el nuevo horario
