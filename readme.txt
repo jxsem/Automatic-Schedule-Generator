@@ -1,60 +1,68 @@
-Generador de Horarios Automático – Google Sheets
 
-Descripción:
-Este proyecto consiste en un sistema automático de generación de horarios para empleados, implementado en JavaScript usando Google Apps Script en Google Sheets. Permite organizar turnos de manera eficiente respetando:
-- Horas máximas por empleado.
-- Descansos fijos y específicos.
-- Turnos de mañana y tarde.
-- Dobles turnos según necesidades.
-- Ajustes personalizados por empleado (ejemplo: horarios fijos de María Ruiz).
-- Evita duplicación de horas en el cálculo total.
+GENERADOR DE HORARIOS
+Manual de uso — Google Apps Script
+Script realizado por Jose Manuel Soldado J.
 
-Tecnologías utilizadas:
-- Google Apps Script – Automatización de Google Sheets.
-- JavaScript – Lógica de asignación de turnos y cálculos de horas.
-- Google Sheets – Interfaz para visualizar y ajustar horarios.
+========================================
 
-Funcionalidades clave:
-1. Asignación de turnos automática
-   - Turnos de mañana y tarde.
-   - Turnos dobles donde aplica.
-   - Exclusión de empleados en días de descanso.
+QUE HACE
+--------
+Genera automaticamente el horario semanal de los empleados en una hoja
+de Google Sheets llamada "Empleados". Rellena cada fila con los turnos
+de Lunes a Sabado y calcula las horas totales semanales.
 
-2. Horarios personalizados
-   - María Ruiz tiene horarios fijos de lunes a sábado, con ajuste para sumar exactamente 24h.
-   - Ajustes de salida y entrada personalizadas (ej. martes 9:00–13:00).
 
-3. Cálculo de horas trabajadas
-   - Se calcula la suma total de horas por empleado.
-   - Evita duplicaciones y respeta máximos semanales.
+REQUISITOS
+----------
+- Hoja de calculo de Google Sheets con una pestana llamada "Empleados".
+- Fila 1 con cabeceras: Nombre | Lunes | Martes | Miercoles | Jueves | Viernes | Sabado | Horas.
+- Script pegado en Extensiones -> Apps Script.
 
-4. Compatibilidad con Google Sheets
-   - Actualización automática de celdas con ajuste de texto.
-   - Compatible con columnas de días y columna de total de horas.
 
-Estructura del código:
-- generarHorario() – Función principal que gestiona todo el flujo:
-  - Lectura de empleados desde Google Sheets.
-  - Configuración de turnos y descansos.
-  - Asignación de turnos dobles y roles.
-  - Actualización de la hoja y cálculo de horas.
+COMO USARLO
+-----------
+Abre Apps Script, selecciona la funcion generarHorario y pulsa Ejecutar.
+El script hara las siguientes preguntas por orden:
 
-- Configuraciones:
-  - maxHoras → Horas máximas por empleado.
-  - descansos → Días de descanso fijos.
-  - asignacionTurnos → Turnos fijos de mañana/tarde.
-  - dobleAsignacion → Días con turnos dobles.
-  - horasMaria → Ajuste especial para horas exactas de María Ruiz.
+Por cada empleado:
+  - Nombre: formato obligatorio -> Apellido2, Apellido1, Nombre
+    Ejemplo: Garcia, Lopez, Ana  ->  resultado: Ana Lopez Garcia
+  - Horas semanales: numero entero entre 1 y 80.
+  - Dias de descanso: 0, 1 o 2. Si hay descanso, indica que dia(s).
+  - Dias que dobla a la semana: entre 0 y los dias laborables disponibles.
+    Este numero junto con las horas debe cuadrar exactamente.
+  - Turno fijo: escribe "manana", "tarde" o "ninguno".
+  - Repite para cada empleado. Pulsa Cancelar cuando hayas terminado.
 
-Ejemplo de uso:
-1. Crear una hoja de Google Sheets con pestañas: Empleados y Horario.
-2. Llenar columna A con los nombres de empleados.
-3. Copiar y pegar el script en Editor de Apps Script asociado al Sheet.
-4. Ejecutar generarHorario() para actualizar los horarios automáticamente.
-5. Ver columna I para el total de horas por empleado.
+Configuracion del horario (una sola vez):
+  - Hora de apertura y cierre de manana (formato HH:MM, ejemplo: 10:00 - 14:00).
+  - Si hay tarde: responde si o no. Si hay tarde, introduce su hora de inicio y fin.
 
-Beneficios:
-- Automatiza la creación de horarios semanales.
-- Reduce errores humanos y duplicación de horas.
-- Permite personalizar reglas por empleado.
-- Ideal para empresas con múltiples empleados y turnos variables.
+
+LOGICA DE ASIGNACION
+--------------------
+- Los dias de descanso fijos nunca se modifican.
+- Los turnos dobles se asignan primero, tantos como el usuario indico.
+- El resto de dias se cubren con manana o tarde segun el turno fijo,
+  o aleatoriamente si no tiene restriccion.
+- Los dias se barajan aleatoriamente en cada ejecucion para dar variedad.
+
+
+ADVERTENCIAS
+------------
+- Si las horas no cuadran con los dobles y dias disponibles, el script
+  avisa pero escribe igualmente lo que pudo calcular.
+- Si un empleado tiene turno fijo de tarde pero no se configuro horario
+  de tarde, el script aborta con un error.
+- Si el nombre no sigue el formato correcto, el script lo rechaza y pide
+  que lo vuelvas a introducir.
+- Si pulsas Cancelar en cualquier momento, la ejecucion se detiene.
+
+
+EJEMPLO RAPIDO
+--------------
+Horario: manana 10:00-14:00 (4h), tarde 17:00-21:00 (4h), doble = 8h.
+Empleado con 32h semanales, 1 dia de descanso y 4 dias doblando:
+  4 dias doble x 8h = 32h. Correcto.
+  El quinto dia laborable queda sin turno asignable y el script lo notifica.
+

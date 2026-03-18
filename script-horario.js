@@ -1,147 +1,344 @@
 function generarHorario() {
-  // Obtiene la hoja activa y selecciona la hoja llamada “Empleados”
+  const ui = SpreadsheetApp.getUi();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const hoja = ss.getSheetByName("Empleados");
 
-  // Toma los nombres desde la columna A (empezando en A2 hacia abajo)
-  const datos = hoja.getRange(2, 1, hoja.getLastRow() - 1, 1).getValues().flat();
-
-  // Días de la semana que se van a usar como columnas
-  const dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
-
-  // Definición de los tres tipos de turnos
-  const mañana = "10:00-14:00";
-  const tarde = "16:30-20:30";
-  const doble = `${mañana} / ${tarde}`; // turno doble (mañana + tarde)
-
-  // Objetos personalizados por empleado -> clave - valor
-  // - max: horas semanales máximas
-  // - descanso: días libres
-  // - solo: “mañana” o “tarde” si solo trabaja en ese turno
-  // - doblesMin / doblesMax: mínimo o máximo de días con turno doble
-  const reglas = {
-    "Adrián Martos": { max: 40, descanso: ["Jueves"], doblesMax: 5, doblesMin: 5},
-    "María Ruiz": { max: 20, descanso: ["Jueves"], solo: "mañana" },
-    "Jose Peinado": { max: 40, descanso: ["Miércoles"], doblesMax: 5, doblesMin: 5 },
-    "Javier Lopez": { max: 32, doblesMax: 2 },
-    "Hilario Pastrana": { max: 32, solo: "tarde", doblesMin: 2 },
-    "Fran Catena": { max: 32, solo: "mañana", doblesMin: 2 },
-    "Fran Cervilla": { max: 32, doblesMax: 3, doblesMin: 3 },
-    "Jose Manuel": { max: 32, doblesMax: 2, doblesMin: 2 },
-    "Antonio Ferron": { max: 32, doblesMax: 2, doblesMin: 2 },
-    "Cinthya Suazo": { max: 28, doblesMax: 1, doblesMin: 2 },
-    "Sol Morales": { max: 24, doblesMax: 1, doblesMin: 1 }
-  };
-
-  // Limpia las columnas B–H (Lunes–Sábado + Horas) antes de generar el nuevo horario
-  hoja.getRange(2, 2, hoja.getLastRow() - 1, dias.length + 1).clearContent();
-
-  // Recorre cada empleado
-  datos.forEach((nombre, i) => {
-    const regla = reglas[nombre] || { max: 32 }; // si no tiene regla, usa 32h por defecto
-    let horas = 0;
-    const fila = [];
-
-    // Crea una copia de los días pero barajada aleatoriamente
-    const diasMezclados = dias.slice().sort(() => Math.random() - 0.5);
-
-    // Objeto si algún empleado NO tiene dia de descanso asignado
-    const asignacion = {};
-    // --- ASIGNAR DESCANSO AUTOMÁTICO A FRAN CERVILLA ---
-    if (nombre === "Fran Cervilla" && !regla.descanso) {
-    const diaAleatorio = dias[Math.floor(Math.random() * dias.length)];
-    regla.descanso = [diaAleatorio];
+  if (!hoja) {
+    ui.alert('No encuentro la hoja "Empleados".');
+    return;
   }
 
-    // --- PRIMERA PASADA: asignación base ---
-    diasMezclados.forEach(dia => {
-      // Si el día está en su descanso, marca “-” y pasa al siguiente
-      if (regla.descanso?.includes(dia)) {
-        asignacion[dia] = "DESCANSO";
-        return;
-      }
+  let empleadosYReglas;
+  try {
+    empleadosYReglas = pedirEmpleadosYReglas_(ui);
+  } catch (e) {
+    ui.alert(String(e && e.message ? e.message : e));
+    return;
+  }
+  const datos = empleadosYReglas.empleados;
+  const reglas = empleadosYReglas.reglas;
+  if (!datos.length) {
+    ui.alert("No se han introducido empleados.");
+    return;
+  }
 
-      // Cuenta los días que ya tienen turno doble
-      const doblesActuales = Object.values(asignacion).filter(x => x.includes("/")).length;
-      const puedeDoblar = !regla.doblesMax || doblesActuales < regla.doblesMax;
-      // Si dobla un dia necesita un descanso entonces almacenamos el descanso en una variable
-      let turno = "DESCANSO";
+  hoja.getRange(2, 1, hoja.getMaxRows() - 1, 1).clearContent();
+  hoja.getRange(2, 1, datos.length, 1).setValues(datos.map(n => [n]));
+  const lastRow = 1 + datos.length;
 
-      // Si tiene restricción de “solo mañana” o “solo tarde”
-      if (regla.solo === "mañana") {
-        turno = mañana;
-        horas += 4;
-      } else if (regla.solo === "tarde") {
-        turno = tarde;
-        horas += 4;
-      } else {
+  const dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
 
-        // Asignación aleatoria de turno (doble, mañana o tarde)
-        const rand = Math.random(); // Genera un número aleatorio entre 0 y 1 (por ejemplo: 0.12, 0.57, 0.91...).
-        if (rand < 0.25 && horas + 8 <= regla.max && puedeDoblar) { 
-          turno = doble;
-          horas += 8;
-        } else if (rand < 0.6 && horas + 4 <= regla.max) {
-          turno = mañana;
-          horas += 4;
-        } else if (horas + 4 <= regla.max) {
-          turno = tarde;
-          horas += 4;
-        }
-      }
-      //Ese reparto de probabilidades (25 % dobles / 35 % mañanas / 40 % tardes) no es casualidad —> se suele ajustar según cómo esté configurado el resto del personal.
-      // Ya que hay como 4 personas con turno fijo de mañanas y habría muchas personas ya de mañanas y pocas de tardes.
+  let configTurnos;
+  try {
+    configTurnos = obtenerConfigTurnosDesdeUsuario_(ui);
+  } catch (e) {
+    ui.alert(String(e && e.message ? e.message : e));
+    return;
+  }
+  const { manana, tarde, doble, horasManana, horasTarde, horasDoble, tieneTarde } = configTurnos;
 
-      asignacion[dia] = turno;
+  if (!tieneTarde) {
+    const empleadosSoloTarde = datos.filter(n => (reglas[n] && reglas[n].solo === "tarde"));
+    if (empleadosSoloTarde.length) {
+      ui.alert(
+        'Has indicado que NO hay horario de tarde, pero hay empleados con regla solo:"tarde":\n\n' +
+          empleadosSoloTarde.join("\n") +
+          '\n\nSolución: vuelve a ejecutar y responde que SÍ hay tarde, o cambia esas reglas.'
+      );
+      return;
+    }
+  }
+
+  hoja.getRange(2, 2, lastRow - 1, dias.length + 1).clearContent();
+
+  datos.forEach((nombre, i) => {
+    const regla = reglas[nombre] || { max: 32, dobles: 0 };
+    const fila = [];
+    const asignacion = {};
+
+    // Marca descansos fijos
+    dias.forEach(d => {
+      if (regla.descanso?.includes(d)) asignacion[d] = "DESCANSO";
     });
 
-    //Resultado al final de esta fase:
-    //El empleado ya tiene un horario tentativo, pero puede no cumplir aún los mínimos o máximos de dobles.
+    // Días disponibles para trabajar, barajados aleatoriamente
+    const diasLibres = dias
+      .filter(d => !regla.descanso?.includes(d))
+      .sort(() => Math.random() - 0.5);
 
-    // --- SEGUNDA PASADA: forzar mínimos de dobles ---
-    if (regla.doblesMin) { // Aquí el script revisa cuántos turnos dobles tiene el empleado y los ajusta hacia arriba si no llega al mínimo.
-      let dobles = Object.values(asignacion).filter(x => x.includes("/")).length;// Busca cuantos "/" hay y los guarda en una variable llamada dobles
-      const diasDisponibles = diasMezclados.filter(
-        d => !asignacion[d].includes("/") && asignacion[d] !== "DESCANSO" // Crea una lista de días disponibles donde no hay turno doble ni descanso. O sea, busca huecos donde podría meter un turno doble.
+    const numDobles  = regla.dobles;
+    const numSimples = diasLibres.length - numDobles;
+
+    // ── Asignación ────────────────────────────────────────────────────────────
+    let doblesRestantes = numDobles;
+
+    diasLibres.forEach(dia => {
+      let turnoElegido;
+
+      // PRIMERO: ¿toca doble este día?
+      // Se respeta incluso si el empleado tiene turno fijo de mañana o tarde
+      if (doblesRestantes > 0) {
+        turnoElegido = doble;
+        doblesRestantes--;
+
+      // SEGUNDO: si no toca doble, aplica el turno fijo o elige aleatoriamente
+      } else if (regla.solo === "mañana") {
+        turnoElegido = manana;
+
+      } else if (regla.solo === "tarde") {
+        if (!tieneTarde) throw new Error(`"${nombre}": solo tarde pero no hay horario de tarde.`);
+        turnoElegido = tarde;
+
+      } else {
+        // Sin restricción: alterna mañana/tarde aleatoriamente
+        turnoElegido = (tieneTarde && Math.random() < 0.5) ? tarde : manana;
+      }
+
+      asignacion[dia] = turnoElegido;
+    });
+
+    // ── Calcula las horas reales asignadas ────────────────────────────────────
+    let horasReales = 0;
+    dias.forEach(d => {
+      const t = asignacion[d];
+      if (!t || t === "DESCANSO") return;
+      if (t === doble)       horasReales += horasDoble;
+      else if (t === manana) horasReales += horasManana;
+      else if (t === tarde)  horasReales += horasTarde;
+    });
+
+    // ── Avisa si las horas reales no coinciden con lo que el usuario pidió ────
+    if (Math.abs(horasReales - regla.max) > 0.001) {
+      ui.alert(
+        `⚠️ "${nombre}": con ${numDobles} doble(s) y ${numSimples} turno(s) simple(s) ` +
+        `resultan ${horasReales.toFixed(2)}h, pero se esperaban ${regla.max}h.\n\n` +
+        `Ajusta el número de dobles o las horas semanales.`
       );
-      while (dobles < regla.doblesMin && diasDisponibles.length) { // Aquí empieza a forzar dobles hasta alcanzar el mínimo obligatorio (doblesMin)
-        const dia = diasDisponibles.pop();
-        asignacion[dia] = doble; // cambia ese turno normal por un turno doble.
-        horas += 4;
-        dobles++;
-      }
-    }
-    // En resumen -> Este bloque corrige el azar de la primera pasada
-
-    // --- TERCERA PASADA: reducir dobles si pasa del máximo ---> Lo mismo de arriba pero al revés
-    if (regla.doblesMax) {
-      let dobles = Object.entries(asignacion)
-        .filter(([_, v]) => v.includes("/"))
-        .map(([d]) => d); // Basicamente realiza una funcion donde cuenta cuantos "/" hay y si hay mas de los que la variable dobleMax permite se realizara un random de un 50% diciendo si el turno que sobra estará de mañanas o tarde
-      while (dobles.length > regla.doblesMax) {
-        const dia = dobles.pop();
-        // cambia el turno doble por mañana o tarde
-        asignacion[dia] = Math.random() < 0.5 ? mañana : tarde;
-        horas -= 4;
-      }
     }
 
-    // Aquí el código revisa si el empleado tiene más turnos dobles de lo permitido (doblesMax).
-    // Si tiene más, va quitando dobles y los convierte en mañana/tarde normales hasta cumplir el límite.
+    dias.forEach(dia => fila.push(asignacion[dia] || "DESCANSO"));
+    fila.push(Number(horasReales.toFixed(2)));
 
-    // Reordena los días a su orden normal (Lunes–Sábado)
-    dias.forEach(dia => fila.push(asignacion[dia] || "—"));
-
-    // Añade las horas totales al final
-    fila.push(horas);
-
-    // Escribe la fila en la hoja (a partir de la columna B)
-    hoja.getRange(i + 2, 2, 1, fila.length).setValues([fila]); // filaInicial, columnaInicial, numFilas, numColumnas
+    hoja.getRange(i + 2, 2, 1, fila.length).setValues([fila]);
   });
 
-  // Ajusta automáticamente el ancho de columnas para que se vea bien
   hoja.autoResizeColumns(1, dias.length + 2);
 }
 
 
-// SCRIPT REALIZADO POR JOSE MANUEL SOLDADO J. 
+// ─────────────────────────────────────────────
+// FUNCIONES AUXILIARES
+// ─────────────────────────────────────────────
+
+function pedirEmpleadosYReglas_(ui) {
+  const reglas = {};
+  const empleados = [];
+  const diasValidos = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+  ui.alert(
+    "Vamos a introducir empleados.\n\n" +
+      'En cada paso escribe: "Segundo apellido, Primer apellido, Nombre".\n' +
+      "Ejemplo: García, López, Ana\n\n" +
+      "Pulsa Cancelar para terminar."
+  );
+
+  while (true) {
+    const resNombre = ui.prompt(
+      "Introduce empleado (Apellido2, Apellido1, Nombre)",
+      "Ejemplo: García, López, Ana",
+      ui.ButtonSet.OK_CANCEL
+    );
+    if (resNombre.getSelectedButton() !== ui.Button.OK) break;
+
+    const nombre = normalizarNombreEmpleado_(resNombre.getResponseText());
+    if (!nombre) continue;
+
+    if (reglas[nombre]) {
+      ui.alert(`El empleado "${nombre}" ya existe. Se omitirá.`);
+      continue;
+    }
+
+    const max = pedirNumeroEnteroEnRango_(
+      ui, `Horas semanales de "${nombre}"`, "Introduce un número (ej. 32)", 1, 80
+    );
+
+    const descansoCount = pedirNumeroEnteroEnRango_(
+      ui,
+      `Días de descanso de "${nombre}"`,
+      "¿Descansa 0, 1 o 2 días a la semana? (0/1/2)",
+      0, 2
+    );
+
+    let descanso = [];
+    if (descansoCount > 0) {
+      descanso = pedirDiasDescanso_(ui, nombre, descansoCount, diasValidos);
+    }
+
+    const diasDisponibles = 6 - descansoCount;
+    const dobles = pedirNumeroEnteroEnRango_(
+      ui,
+      `¿Cuántos días doblará "${nombre}" a la semana?`,
+      `Tiene ${diasDisponibles} días laborables. Responde entre 0 y ${diasDisponibles}.`,
+      0, diasDisponibles
+    );
+
+    const solo = pedirSolo_(ui, nombre);
+
+    reglas[nombre] = { max, descanso, dobles, ...(solo ? { solo } : {}) };
+    empleados.push(nombre);
+  }
+
+  return { empleados, reglas };
+}
+
+function normalizarNombreEmpleado_(texto) {
+  const raw = String(texto || "").trim();
+  if (!raw) return "";
+  const partes = raw.includes(",")
+    ? raw.split(",").map(s => s.trim()).filter(Boolean)
+    : raw.split(/\s+/).map(s => s.trim()).filter(Boolean);
+
+  if (partes.length < 3) {
+    throw new Error('Nombre no válido. Usa "Segundo apellido, Primer apellido, Nombre".');
+  }
+
+  const apellido2 = partes[0];
+  const apellido1 = partes[1];
+  const nombre    = partes.slice(2).join(" ");
+
+  return `${nombre} ${apellido1} ${apellido2}`.replace(/\s+/g, " ").trim();
+}
+
+function pedirNumeroEnteroEnRango_(ui, titulo, mensaje, min, max) {
+  const res = ui.prompt(titulo, mensaje, ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) throw new Error("Operación cancelada.");
+  const n = Number(String(res.getResponseText() || "").trim());
+  if (!Number.isInteger(n) || n < min || n > max) {
+    throw new Error(`Valor no válido. Debe ser un entero entre ${min} y ${max}.`);
+  }
+  return n;
+}
+
+function pedirDiasDescanso_(ui, nombreEmpleado, cantidad, diasValidos) {
+  const res = ui.prompt(
+    `¿Qué día(s) descansa "${nombreEmpleado}"?`,
+    `Escribe ${cantidad} día(s) separados por coma. Opciones: ${diasValidos.join(", ")}`,
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (res.getSelectedButton() !== ui.Button.OK) throw new Error("Operación cancelada.");
+  const entrada = String(res.getResponseText() || "")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  const normalizados = [...new Set(entrada.map(capitalizarDia_))];
+  const invalidos    = normalizados.filter(d => !diasValidos.includes(d));
+  if (invalidos.length) {
+    throw new Error(`Día(s) no válido(s): ${invalidos.join(", ")}`);
+  }
+  if (normalizados.length !== cantidad) {
+    throw new Error(`Debes indicar exactamente ${cantidad} día(s) de descanso.`);
+  }
+  return normalizados;
+}
+
+function capitalizarDia_(dia) {
+  const t = String(dia || "").trim().toLowerCase();
+  if (!t) return "";
+  if (t === "miercoles") return "Miércoles";
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
+function pedirSolo_(ui, nombreEmpleado) {
+  const res = ui.prompt(
+    `Turno fijo de "${nombreEmpleado}"`,
+    'Escribe: "mañana", "tarde" o "ninguno"',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (res.getSelectedButton() !== ui.Button.OK) throw new Error("Operación cancelada.");
+  const t = String(res.getResponseText() || "").trim().toLowerCase();
+  if (["ninguno", "no", "", "ambos"].includes(t)) return null;
+  if (t === "mañana" || t === "manana") return "mañana";
+  if (t === "tarde") return "tarde";
+  throw new Error('Respuesta no válida. Escribe "mañana", "tarde" o "ninguno".');
+}
+
+function obtenerConfigTurnosDesdeUsuario_(ui) {
+  const mananaInicio = pedirHora_(ui, "Introduce la HORA DE APERTURA (mañana)", "Ejemplo: 10:00");
+  const mananaFin    = pedirHora_(ui, "Introduce la HORA DE CIERRE (mañana)",   "Ejemplo: 14:00");
+  validarRango_(mananaInicio, mananaFin, "mañana");
+
+  const respuestaTarde = ui.prompt(
+    "¿Tienes horario de tarde?",
+    'Responde "si" o "no".',
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (respuestaTarde.getSelectedButton() !== ui.Button.OK) throw new Error("Operación cancelada.");
+  const tieneTarde = normalizarSiNo_(respuestaTarde.getResponseText());
+
+  let tardeInicio = null;
+  let tardeFin    = null;
+  if (tieneTarde) {
+    tardeInicio = pedirHora_(ui, "¿Desde qué hora es la TARDE?", "Ejemplo: 16:30");
+    tardeFin    = pedirHora_(ui, "¿Hasta qué hora es la TARDE?", "Ejemplo: 20:30");
+    validarRango_(tardeInicio, tardeFin, "tarde");
+  }
+
+  const manana      = `${formatearHora_(mananaInicio)}-${formatearHora_(mananaFin)}`;
+  const horasManana = (mananaFin - mananaInicio) / 60;
+
+  let tarde      = "";
+  let horasTarde = 0;
+  let doble      = manana;
+  let horasDoble = horasManana;
+
+  if (tieneTarde) {
+    tarde      = `${formatearHora_(tardeInicio)}-${formatearHora_(tardeFin)}`;
+    horasTarde = (tardeFin - tardeInicio) / 60;
+    doble      = `${manana} / ${tarde}`;
+    horasDoble = horasManana + horasTarde;
+  }
+
+  return { manana, tarde, doble, horasManana, horasTarde, horasDoble, tieneTarde };
+}
+
+function pedirHora_(ui, titulo, ejemplo) {
+  const res = ui.prompt(titulo, ejemplo, ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) throw new Error("Operación cancelada.");
+  return parsearHoraAMinutos_(res.getResponseText());
+}
+
+function normalizarSiNo_(texto) {
+  const t = String(texto || "").trim().toLowerCase();
+  if (["si", "sí", "s", "y", "yes"].includes(t)) return true;
+  if (["no", "n"].includes(t)) return false;
+  throw new Error('Respuesta no válida. Escribe "si" o "no".');
+}
+
+function parsearHoraAMinutos_(texto) {
+  const t = String(texto || "").trim();
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t);
+  if (!m) throw new Error(`Hora no válida: "${t}". Usa formato HH:MM (ej. 10:00).`);
+  const hh = Number(m[1]);
+  const mm = Number(m[2]);
+  if (Number.isNaN(hh) || Number.isNaN(mm) || hh < 0 || hh > 23 || mm < 0 || mm > 59) {
+    throw new Error(`Hora fuera de rango: "${t}".`);
+  }
+  return hh * 60 + mm;
+}
+
+function formatearHora_(minutos) {
+  const hh = Math.floor(minutos / 60);
+  const mm = minutos % 60;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+function validarRango_(inicioMin, finMin, nombre) {
+  if (finMin <= inicioMin) {
+    throw new Error(`Rango de ${nombre} no válido: la hora de cierre debe ser posterior a la de apertura.`);
+  }
+  const durMin = finMin - inicioMin;
+  if (durMin < 30) {
+    throw new Error(`Rango de ${nombre} demasiado corto (${durMin} min). Revisa las horas.`);
+  }
+}
