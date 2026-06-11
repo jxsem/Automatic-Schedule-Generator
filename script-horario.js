@@ -1,3 +1,13 @@
+/**
+ * Busca la hoja llamada empleados
+ * Sale un pop up pidiendo nombres de empleados
+ * A priori, los pinta de lunes a sabado
+ * Pregunta por los turnos de descanso
+ * Pregunta si trabaja solo de mañana o de tarde
+ * Pregunta si tiene dias de descanso y si éstos están definidos o no, si no es aleatorio
+ * Te pide cuantas horas / semana debería de trabajar y comprueba tras los descansos y las horas realizadas tanto por la mañana como por la tarde que coincida
+ */
+
 function generarHorario() {
   const ui = SpreadsheetApp.getUi();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -128,6 +138,11 @@ function generarHorario() {
 
 // ─────────────────────────────────────────────
 // FUNCIONES AUXILIARES
+/*
+* Pide el apellidos y nombre
+* Reglas: si descansa, que dias descansa, cuales son los dias, trabajo de mañana o tarde o mixto
+
+*/
 // ─────────────────────────────────────────────
 
 function pedirEmpleadosYReglas_(ui) {
@@ -208,7 +223,9 @@ function normalizarNombreEmpleado_(texto) {
 
   return `${nombre} ${apellido1} ${apellido2}`.replace(/\s+/g, " ").trim();
 }
-
+/* 
+* Se captura el error en una función si, el rango de dias de descanso es superior o inferior a X dias
+*/
 function pedirNumeroEnteroEnRango_(ui, titulo, mensaje, min, max) {
   const res = ui.prompt(titulo, mensaje, ui.ButtonSet.OK_CANCEL);
   if (res.getSelectedButton() !== ui.Button.OK) throw new Error("Operación cancelada.");
@@ -241,14 +258,18 @@ function pedirDiasDescanso_(ui, nombreEmpleado, cantidad, diasValidos) {
   }
   return normalizados;
 }
-
+/*
+* Se capitalizan dias ya que la columna está capitalizada y podría aparecer bugs innecesarios
+*/
 function capitalizarDia_(dia) {
   const t = String(dia || "").trim().toLowerCase();
   if (!t) return "";
   if (t === "miercoles") return "Miércoles";
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
-
+/*
+* Pide si el empeado X trabaja de mañanas, tardes, o mañanas y tardes
+*/
 function pedirSolo_(ui, nombreEmpleado) {
   const res = ui.prompt(
     `Turno fijo de "${nombreEmpleado}"`,
@@ -262,7 +283,9 @@ function pedirSolo_(ui, nombreEmpleado) {
   if (t === "tarde") return "tarde";
   throw new Error('Respuesta no válida. Escribe "mañana", "tarde" o "ninguno".');
 }
-
+/*
+* Se pide la hora del comercio, hora de apertura, hora de cierre y si se trabaja por la tarde
+*/
 function obtenerConfigTurnosDesdeUsuario_(ui) {
   const mananaInicio = pedirHora_(ui, "Introduce la HORA DE APERTURA (mañana)", "Ejemplo: 10:00");
   const mananaFin    = pedirHora_(ui, "Introduce la HORA DE CIERRE (mañana)",   "Ejemplo: 14:00");
